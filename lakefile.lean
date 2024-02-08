@@ -11,6 +11,9 @@ require mathlib from git
 package smt where
   precompileModules := true
   moreLeanArgs := #[s!"--load-dynlib={nameToSharedLib "c++"}.1"]
+  -- I'm not sure why `load-dynlib` is not sufficient, but this works.
+  -- I suspect it's something to do with linking order.
+  moreLinkArgs := #["-lstdc++"]
   moreGlobalServerArgs := #[s!"--load-dynlib={nameToSharedLib "c++"}.1"]
 
 @[default_target]
