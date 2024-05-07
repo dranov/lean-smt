@@ -102,7 +102,7 @@ where
       es := es.push e
     return es
   getVariableName (t : cvc5.Term) : Name :=
-    if t.hasSymbol then t.getSymbol else Name.num `x t.getId
+    if t.hasSymbol then Name.mkSimple t.getSymbol else Name.num `x t.getId
 
 def reconstructRewrite (pf : cvc5.Proof) (cpfs : Array Expr) : ReconstructM (Option Expr) := do
   match pf.getRewriteRule with

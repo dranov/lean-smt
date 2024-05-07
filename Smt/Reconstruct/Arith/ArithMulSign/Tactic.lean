@@ -24,9 +24,9 @@ inductive Pol where
  deriving BEq
 
 def intLOR := mkApp2 (.const ``LinearOrderedCommRing.toLinearOrderedRing [.zero])
-                     (.const ``Int []) (.const ``Int.linearOrderedCommRing [])
+                     (.const ``Int []) (.const ``Int.instLinearOrderedCommRing [])
 
-def RealLOR := Expr.const ``Real.instLinearOrderedRingReal []
+def RealLOR := Expr.const ``Real.instLinearOrderedRing []
 
 def mulSign (mv : MVarId) (xs : Array (Expr × Fin 3 × Nat)) : MetaM Unit := do
   mv.assign (← go true xs.toList (mkConst `empty) (mkConst `empty))

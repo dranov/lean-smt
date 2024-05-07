@@ -217,7 +217,7 @@ def prove (query : String) (timeout : Option Nat) : MetaM (Except Error cvc5.Pro
       if h : 0 < ps.size then
         trace[smt.debug.reconstruct] (← Solver.proofToString ps[0])
         return ps[0]
-    throw (self := instMonadExcept _ _) (Error.user_error "something went wrong")
+    throw (self := instMonadExceptOfMonadExceptOf  _ _) (Error.user_error "something went wrong")
 
 syntax (name := reconstruct) "reconstruct" str : tactic
 

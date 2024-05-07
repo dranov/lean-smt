@@ -192,10 +192,10 @@ theorem deMorgan : ∀ {l : List Prop}, ¬ orN (notList l) → andN l :=
                   cases Classical.em t with
                   | inl tt  => exact tt
                   | inr ntt => exact False.elim (h ntt)
-     | h₁::h₂::t => by simp [orN, notList, map] at h
+     | h₁::h₂::t => by simp only [orN, notList, map] at h
                        have ⟨ t₁, t₂ ⟩ := deMorganSmall h
                        have ih := @deMorgan (h₂::t) t₂
-                       simp [andN]
+                       simp only [andN]
                        have t₁' := notNotElim t₁
                        exact ⟨ t₁', ih ⟩
 
@@ -204,8 +204,8 @@ theorem deMorgan₂ : ∀ {l : List Prop}, andN l → ¬ orN (notList l) :=
      exact match l with
      | [] => by simp [orN, notList]
      | [t] => by simp only [orN, notList]; simp [andN] at h; exact notNotIntro h
-     | h₁::h₂::t => by simp [orN, notList, map]
-                       simp [andN] at h
+     | h₁::h₂::t => by simp only [orN, notList, map]
+                       simp only [andN] at h
                        apply deMorganSmall₂
                        have nnh₁ := notNotIntro (And.left h)
                        have ih := @deMorgan₂ (h₂::t) (And.right h)
@@ -215,13 +215,13 @@ theorem deMorgan₃ : ∀ {l : List Prop}, ¬ orN l → andN (notList l) :=
   by intros l h
      exact match l with
      | [] => True.intro
-     | [t] => by simp [andN, notList, map]
-                 simp [orN, Not] at h
+     | [t] => by simp only [andN, notList, map]
+                 simp only [orN, Not] at h
                  exact h
-     | h₁::h₂::t => by simp [orN, Not] at h
+     | h₁::h₂::t => by simp only [orN, Not] at h
                        have ⟨t₁, t₂⟩ := deMorganSmall h
-                       simp [orN, Not] at t₂
-                       simp [andN, notList, map]
+                       simp only [orN, Not] at t₂
+                       simp only [andN, notList, map]
                        have ih := @deMorgan₃ (h₂::t) t₂
                        exact ⟨t₁, ih⟩
 

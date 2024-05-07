@@ -95,18 +95,18 @@ theorem combineSigns₄ : a < 0 → b < 0 → b * a > 0 := by
   simp at h
   exact h
 
-theorem castPos : ∀ (a : Int), a > 0 → Real.intCast.intCast a > 0 := by
+theorem castPos : ∀ (a : Int), a > 0 → Real.instIntCast.intCast a > 0 := by
   intros a h
   simp [h]
 
-theorem castNeg : ∀ (a : Int), a < 0 → Real.intCast.intCast a < 0 := by
+theorem castNeg : ∀ (a : Int), a < 0 → Real.instIntCast.intCast a < 0 := by
   intros a h
   simp [h]
 
 instance : HMul ℤ ℝ ℝ where
-  hMul z r := Real.intCast.intCast z * r
+  hMul z r := Real.instIntCast.intCast z * r
 
 instance : HMul ℝ ℤ ℝ where
-  hMul r z := r * Real.intCast.intCast z
+  hMul r z := r * Real.instIntCast.intCast z
 
 end Smt.Reconstruct.Arith

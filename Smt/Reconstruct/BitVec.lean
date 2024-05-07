@@ -61,14 +61,14 @@ where
       return q(@instDecidableNot $p $hp)
     | .AND => rightAssocOpDecidableInst q(And) q(@instDecidableAnd) t
     | .OR => rightAssocOpDecidableInst q(Or) q(@instDecidableOr) t
-    | .XOR => rightAssocOpDecidableInst q(XOr) q(@XOr.instDecidableXOr) t
+    | .XOR => rightAssocOpDecidableInst q(XOr) q(@XOr.instDecidable) t
     | .EQUAL =>
       if t[0]!.getSort.getKind == .BOOLEAN_SORT then
         let p : Q(Prop) ← reconstructTerm t[0]!
         let q : Q(Prop) ← reconstructTerm t[1]!
         let hp : Q(Decidable $p) ← synthDecidableInst t[0]!
         let hq : Q(Decidable $q) ← synthDecidableInst t[1]!
-        return q(@instDecidableEqProp $p $q (@instDecidableIff $p $q $hp $hq))
+        return q(@instDecidableEqOfIff $p $q (@instDecidableIff $p $q $hp $hq))
       if t[0]!.getSort.getKind == .BITVECTOR_SORT then
         let w : Nat := t[0]!.getSort.getBitVectorSize.val
         return q(@instDecidableEqBitVec $w)
