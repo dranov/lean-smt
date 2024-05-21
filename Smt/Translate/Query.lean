@@ -203,8 +203,11 @@ where
 
     trace[smt.translate.query] "deps: {deps}"
     for e' in deps do
-      go e'
-      addDependency e e'
+      -- if e' is an application of DecidableEq, skip it
+      let et' ← instantiateMVars (← inferType e')
+      match et' with
+      | app (const `DecidableEq ..) _ => dbg_trace "skipping {e'} : {et'}" ; continue
+      | _ => go e' ; addDependency e e'
 
 end QueryBuilderM
 
