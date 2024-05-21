@@ -14,6 +14,7 @@ open Lean
 initialize
   registerTraceClass `smt
   registerTraceClass `smt.attr
+  registerTraceClass `smt.debug
   registerTraceClass `smt.translate
   registerTraceClass `smt.translate.expr
   registerTraceClass `smt.translate.query
