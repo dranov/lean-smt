@@ -23,7 +23,7 @@ structure TranslationM.State where
   /-- Memoizes `applyTranslators?` calls together with what they add to `depConstants`. -/
   cache : HashMap Expr (Option (Term × NameSet)) := .empty
 
-abbrev TranslationM := StateT TranslationM.State MetaM
+abbrev TranslationM := StateT TranslationM.State Elab.TermElabM
 
 /-- A function which translates some subset of Lean expressions to SMT-LIBv2 `Term`s. We use
 the combination of all registered translators to encode a fragment of Lean into the many-sorted
@@ -128,7 +128,9 @@ def translateExpr (e : Expr) : TranslationM (Term × NameSet) :=
   withTraceNode `smt.translate (traceTranslation e ·) do
     modify fun st => { st with depConstants := .empty }
     trace[smt.translate.expr] "before: {e}"
-    let tm ← applyTranslators! e
+    let e' ← Elab.Term.elabTerm (← PrettyPrinter.delab e) none
+    trace[smt.translate.expr] "after pretty-printing: {e'}"
+    let tm ← applyTranslators! e'
     trace[smt.translate.expr] "translated: {tm}"
     return (tm, (← get).depConstants)
 

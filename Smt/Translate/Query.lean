@@ -250,12 +250,12 @@ def addCommand (cmd : Command) (cmds : List Command) : MetaM (List Command) := d
   | _ => pure ()
   return cmds
 
-def emitVertex (cmds : HashMap Expr Command) (e : Expr) : StateT (List Command) MetaM Unit := do
+def emitVertex (cmds : HashMap Expr Command) (e : Expr) : StateT (List Command) Elab.TermElabM Unit := do
   trace[smt.translate.query] "emitting {e}"
   let some cmd := cmds.find? e | throwError "no command was computed for {e}"
   set (← addCommand cmd (← get))
 
-def generateQuery (goal : Expr) (hs : List Expr) : MetaM (List Command) :=
+def generateQuery (goal : Expr) (hs : List Expr) : Elab.TermElabM (List Command) :=
   withTraceNode `smt.translate.query (fun _ => pure .nil) do
     trace[smt.translate.query] "Goal: {← inferType goal}"
     trace[smt.translate.query] "Provided Hints: {hs}"
