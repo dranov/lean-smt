@@ -8,6 +8,7 @@ Authors: Abdalrhman Mohamed
 import cvc5
 import Qq
 
+import Smt.Translate.Solver
 import Smt.Attribute
 
 namespace Smt
@@ -197,6 +198,8 @@ def solve (query : String) (timeout : Option Nat) : MetaM (Except Error cvc5.Pro
     Solver.setOption "produce-proofs" "true"
     Solver.setOption "proof-elim-subtypes" "true"
     Solver.setOption "proof-granularity" "dsl-rewrite"
+    if Smt.Translate.smt.solver.finitemodelfind.get (← getOptions) then
+      Solver.setOption "finite-model-find" "true"
     Solver.parse query
     let r ← Solver.checkSat
     trace[smt.solve] m!"result: {r}"

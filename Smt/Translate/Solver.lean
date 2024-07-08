@@ -57,6 +57,11 @@ register_option smt.solver.path : String := {
   descr := "The path to the solver used for solving the SMT query."
 }
 
+register_option smt.solver.finitemodelfind : Bool := {
+  defValue := false
+  descr := "Use the finite model finding heuristic for quantifier instantiation."
+}
+
 /-- Result of an SMT query. -/
 inductive Result where
   | sat     : Result
