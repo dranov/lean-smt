@@ -103,6 +103,8 @@ The tactic then generates the query below:
 -/
 syntax (name := smt) "smt" smtHints smtTimeout : tactic
 
+syntax (name := trustSmt) "trust_smt" smtHints smtTimeout : tactic
+
 /-- Like `smt`, but just shows the query without invoking a solver. -/
 syntax (name := smtShow) "smt_show" smtHints : tactic
 
@@ -119,6 +121,31 @@ def parseTimeout : TSyntax `smtTimeout → TacticM (Option Nat)
 @[tactic smt] def evalSmt : Tactic := fun stx => withMainContext do
   let mvs ← Smt.smt (← Tactic.getMainGoal) (← parseHints ⟨stx[1]⟩) (← parseTimeout ⟨stx[2]⟩)
   Tactic.replaceMainGoal mvs
+
+@[tactic trustSmt] def evalTrustSmt : Tactic := fun stx => withMainContext do
+  let mv ← Tactic.getMainGoal
+  let hs ← parseHints ⟨stx[1]⟩
+  let timeout ← parseTimeout ⟨stx[2]⟩
+  let mv ← Util.rewriteIffMeta mv
+  let goalType : Q(Prop) ← mv.getType
+  -- 1. Process the hints passed to the tactic.
+  withProcessedHints mv hs fun mv hs => mv.withContext do
+  -- 2. Generate the SMT query.
+  let cmds ← prepareSmtQuery hs (← mv.getType)
+  let cmds := .setLogic "ALL" :: cmds
+  trace[smt] "goal: {goalType}"
+  trace[smt] "\nquery:\n{Command.cmdsAsQuery (cmds ++ [.checkSat])}"
+  -- 3. Run the solver.
+  let res ← solve (Command.cmdsAsQuery cmds) timeout
+   match res with
+  | .error e =>
+    -- 4a. Print error reason.
+    trace[smt] "\nerror reason:\n{repr e}\n"
+    throwError "unable to prove goal, either it is false or you need to define more symbols with `smt [foo, bar]`"
+  | .ok _pf =>
+    -- 4b. Admit the proof
+    mv.admit
+
 
 @[tactic smtShow] def evalSmtShow : Tactic := fun stx => withMainContext do
   let g ← Meta.mkFreshExprMVar (← getMainTarget)
