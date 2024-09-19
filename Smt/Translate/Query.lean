@@ -148,6 +148,7 @@ def addDeclareCommandFor (nm : String) (e tp : Expr) (params : Array Expr) (cod 
 
 /-- Build the command for `e : tp` and add it to the graph. Return the command's dependencies. -/
 def addCommandFor (e tp : Expr) : QueryBuilderM (Array Expr) := do
+  withTraceNode `smt.perf.addCommandFor (fun _ => pure .nil) do
   -- Is `tp` a `Prop` to assert?
   if let 0 ← getSortLevel tp then
     let (tmTp, deps) ← translateAndFindDeps tp
@@ -173,21 +174,28 @@ def addCommandFor (e tp : Expr) : QueryBuilderM (Array Expr) := do
   -- the definition might depend on local bindings which we then have to translate.
   deps.filterM (fun | fvar id .. => Option.isSome <$> id.findDecl? | _ => pure true)
 
+def inferT (e : Expr) : QueryBuilderM Expr := do
+  withTraceNode `smt.perf.inferType (fun _ => pure .nil) do
+  let et ← inferType e
+  let et ← instantiateMVars et
+  trace[smt.translate.query] "processing {e} : {et}"
+  return et
+
 /-- Build a graph of SMT-LIB commands to emit with dependencies between them as edges. -/
 partial def buildDependencyGraph (g : Expr) : QueryBuilderM Unit := do
+  withTraceNode `smt.perf.buildDependencyGraph (fun _ => pure .nil) do
   go g
   for h in (← read).toDefine do
     go h
 where
   go (e : Expr) : QueryBuilderM Unit := do
+     withTraceNode `smt.perf.buildDependencyGraphGo (fun _ => pure .nil) do
     if (← get).graph.contains e then
       return
     if !(e.isConst ∨ e.isFVar ∨ e.isMVar) then
       throwError "failed to build graph, unexpected expression{indentD e}\nof kind {e.ctorName}"
 
-    let et ← inferType e
-    let et ← instantiateMVars et
-    trace[smt.translate.query] "processing {e} : {et}"
+    let et ← inferT e
 
     -- HACK: `Nat` special cases
     if e matches const `Nat .. then

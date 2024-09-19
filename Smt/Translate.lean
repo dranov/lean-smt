@@ -59,6 +59,7 @@ opaque getTranslators : MetaM (List (Translator × Name))
 def withCache (k : Translator) (e : Expr) : TranslationM (Option Term) := do
   match (← get).cache.find? e with
   | some (some (tm, depConsts, depFVars)) =>
+    trace[smt.translate] "cache hit: {e} ↦ {tm}"
     modify fun st => { st with
       depConstants := st.depConstants.union depConsts
       depFVars := st.depFVars.union depFVars
@@ -67,6 +68,7 @@ def withCache (k : Translator) (e : Expr) : TranslationM (Option Term) := do
   | some none =>
     return none
   | none =>
+    trace[smt.translate] "cache miss: {e}"
     let depConstantsBefore := (← get).depConstants
     let depFVarsBefore := (← get).depFVars
     modify fun st => { st with depConstants := .empty }
@@ -94,6 +96,7 @@ partial def applyTranslators? : Translator := fun e => do
   go ts e
   where
     go (ts : List (Translator × Name)) : Translator := fun e => do
+      withTraceNode `smt.perf.applyTranslatorsGo (fun _ => pure .nil) do
       -- First try all translators on the whole expression
       -- TODO: Use `DiscrTree` to index the translators instead of naively looping
       for (t, nm) in ts do

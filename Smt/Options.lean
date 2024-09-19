@@ -22,5 +22,12 @@ initialize
   registerTraceClass `smt.reconstruct.sort
   registerTraceClass `smt.reconstruct.term
   registerTraceClass `smt.reconstruct.proof
+  registerTraceClass `smt.perf.buildDependencyGraph
+  registerTraceClass `smt.perf.buildDependencyGraphGo
+  registerTraceClass `smt.perf.addCommandFor
+  registerTraceClass `smt.perf.inferType
+  registerTraceClass `smt.perf.applyTranslators
+  registerTraceClass `smt.perf.applyTranslatorsGo
+
 
 end Smt
