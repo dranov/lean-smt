@@ -89,7 +89,7 @@ partial def applyTranslators! (e : Expr) : TranslationM Term := do
 expression and if one succeeds, its result is returned. Otherwise, `e` is split into subexpressions
 which are then recursively translated and put together into an SMT-LIB term. The traversal proceeds
 in a top-down, depth-first order. -/
-partial def applyTranslators? : Translator := fun e => do
+partial def applyTranslators? : Translator := withCache fun e => do
   let ts ← getTranslators
   go ts e
   where
