@@ -3,13 +3,13 @@ import Lake
 open Lake DSL
 
 require auto from
-  git "https://github.com/abdoo8080/lean-auto.git" @ "918a69939911ea5b0906aa67505dc5c85dc6296b"
+  git "https://github.com/dranov/lean-auto.git" @ "bump-v4.20.0-rc3"
 
 require cvc5 from
-  git "https://github.com/abdoo8080/lean-cvc5.git" @ "39a646d"
+  git "https://github.com/dranov/lean-cvc5.git" @ "v4.20.0-rc3-unofficial"
 
 require mathlib from
-  git "https://github.com/leanprover-community/mathlib4.git" @ "v4.16.0"
+  git "https://github.com/leanprover-community/mathlib4.git" @ "1755c0ff6d14a8b7818003c6f277a4410c2683bd"
 
 package smt
 

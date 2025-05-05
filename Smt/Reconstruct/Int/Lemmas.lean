@@ -7,18 +7,6 @@ Authors: Tomaz Gomes Mascarenhas, Abdalrhman Mohamed
 
 import Smt.Reconstruct.Int.Core
 
-private theorem Int.mul_lt_mul_left {c x y : Int} (hc : c > 0) : (c * x < c * y) = (x < y) := by
-  apply propext
-  constructor
-  · apply Int.lt_of_mul_lt_mul_left (h := Int.le_of_lt hc)
-  · apply Int.mul_lt_mul_of_pos_left (h₂ := hc)
-
-private theorem Int.mul_le_mul_left {c x y : Int} (hc : c > 0) : (c * x ≤ c * y) = (x ≤ y) := by
-  apply propext
-  constructor
-  · apply le_of_mul_le_mul_left (h := hc)
-  · apply Int.mul_le_mul_of_nonneg_left (h₂ := Int.le_of_lt hc)
-
 private theorem Int.mul_eq_zero_left {x y : Int} (hx : x ≠ 0) (hxy : x * y = 0) : y = 0 := by
   rewrite [Int.mul_eq_zero] at hxy
   exact hxy.resolve_left hx
