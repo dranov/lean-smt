@@ -9,6 +9,7 @@ import Lean
 
 import Smt.Attribute
 import Smt.Translate.Term
+import Smt.Translate.GlobalCache
 
 /-- Return true iff `e` contains a free variable which satisfies `p`. -/
 @[inline] private def Lean.Expr.hasAnyFVar' [Monad m] (e : Expr) (p : FVarId → m Bool) : m Bool :=
@@ -84,6 +85,7 @@ def withCache (k : Translator) (e : Expr) : TranslationM (Option Term) := do
       depConstants := st.depConstants.union depConsts
       depFVars := st.depFVars.union depFVars
     }
+    trace[smt.cache] "cache hit: {e} ↦ {tm} (depConsts: {depConsts.toList}, depFVars: {depFVars.toList.map (·.name)})"
     return some tm
   | some none =>
     return none
@@ -92,12 +94,15 @@ def withCache (k : Translator) (e : Expr) : TranslationM (Option Term) := do
     let depFVarsBefore := (← get).depFVars
     modify fun st => { st with depConstants := .empty, depFVars := .empty }
     let ret? ← k e
+    trace[smt.cache] "cache miss: {e} (depConsts: {depConstantsBefore.toList}, depFVars: {← fvnames $ depFVarsBefore.toList}) → (depConsts: {((← get).depConstants).toList}, depFVars: {← fvnames ((← get).depFVars).toList})"
     modify fun st => { st with
       depConstants := st.depConstants.union depConstantsBefore
       depFVars := st.depFVars.union depFVarsBefore
       cache := st.cache.insert e <| ret?.map ((·, st.depConstants, st.depFVars))
     }
     return ret?
+  where
+    fvnames (fvarIds : List FVarId) : MetaM (List Name) := do fvarIds.mapM (fun fvarId => fvarId.getUserName)
 
 def withScopedName (n : Name) (b : Expr) (k : Name → TranslationM α) : TranslationM α := do
   let state ← get
@@ -178,11 +183,17 @@ def traceTranslation (e : Expr) (e' : Except ε (Term × NameSet × FVarIdSet)) 
 Returns the resulting SMT-LIB term and set of dependencies. -/
 def translateExpr (e : Expr) : TranslationM (Term × NameSet × FVarIdSet) :=
   withTraceNode `smt.translate (traceTranslation e ·) do
-    modify fun st => { st with depConstants := .empty, depFVars := .empty }
+    let useGlobal := smt.globalCache.get (← getOptions)
+    let localCache ← if useGlobal then pure $ (globalCache.getState (← getEnv)).cache else pure .emptyWithCapacity
+    modify fun st => { st with depConstants := .empty, depFVars := .empty, cache := localCache }
+    trace[smt.cache] "starting cache keys ({if useGlobal then "global" else "local"}): {(← get).cache.keys}"
     trace[smt.translate.expr] "before: {e}"
     let tm ← applyTranslators! e
     trace[smt.translate.expr] "translated: {tm}"
+    let localCache := (← get).cache
+    modifyEnv (fun env => globalCache.modifyState env (fun s => s.overwrite { cache := localCache } ))
     return (tm, (← get).depConstants, (← get).depFVars)
+
 
 def translateExpr' (e : Expr) : TranslationM Term :=
   Prod.fst <$> translateExpr e
