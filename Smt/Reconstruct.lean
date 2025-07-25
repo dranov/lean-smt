@@ -228,6 +228,9 @@ def solve (query : String) (timeout : Option Nat) : MetaM (Except Error cvc5.Pro
     if let .some timeout := timeout then
       Solver.setOption "tlimit" (toString (1000*timeout))
     Solver.setOption "dag-thresh" "0"
+    Solver.setOption "finite-model-find" "true"
+    Solver.setOption "enum-inst-interleave" "true"
+    Solver.setOption "nl-ext-tplanes" "true"
     Solver.setOption "simplification" "none"
     Solver.setOption "enum-inst" "true"
     Solver.setOption "cegqi-midpoint" "true"
