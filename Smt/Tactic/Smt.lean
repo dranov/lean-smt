@@ -108,7 +108,9 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.with
     let uc := hs.filter uc.flatten.contains
     if cfg.trust then
       -- 6. Trust the result by admitting original goal.
-      mv.admit true
+      -- We mark this as a non-synthetic `sorry` to distinguish from failing to
+      -- prove the goal, i.e. we behave as if we were a user-written `sorry`.
+      mv.admit (synthetic := false)
       return .unsat [] uc
     -- 7. Reconstruct proof.
     let (_, ps, p, hp, mvs) ← reconstructProof pf ctx
