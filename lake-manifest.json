@@ -18,7 +18,7 @@
    "rev": "77f45ae314d657466853138a61cba8fca00094c8",
    "name": "cvc5",
    "manifestFile": "lake-manifest.json",
-   "inputRev": "77f45ae314d657466853138a61cba8fca00094c8",
+   "inputRev": "77f45ae",
    "inherited": false,
    "configFile": "lakefile.lean"},
   {"url": "https://github.com/leanprover-community/lean-auto.git",
