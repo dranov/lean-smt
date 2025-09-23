@@ -79,16 +79,24 @@ deriving Inhabited
   _before_ the proof reconstruction is completed.
 -/
 
-initialize async : Std.Mutex AsyncState ← Std.Mutex.new default
+initialize asyncState : SimpleScopedEnvExtension AsyncState AsyncState ← registerSimpleScopedEnvExtension {
+  name := `asyncState
+  initial := default
+  addEntry := fun _ state' => state'
+}
 
 /-- Initialize the async state with the given name and (optional) channel. If
 no channel is provided, a new one is created and returned. -/
 def initAsyncState [Monad m] [MonadEnv m] [MonadLiftT BaseIO m] [MonadLiftT (ST IO.RealWorld) m] [MonadFinally m] (name : Name) (ch : Option (Std.CloseableChannel ((Name × Nat) × AsyncOutput)) := .none) (sendQuery := false) (sendRawResult := false) (sendResult := true): m (Std.CloseableChannel ((Name × Nat) × AsyncOutput)) := do
-  async.atomically (fun ref => do
-    let ch := ch.getD (← Std.CloseableChannel.new)
-    ref.set { name := name, index := 0, ch := ch, sendQuery := sendQuery, sendRawResult := sendRawResult, sendResult := sendResult }
-    return ch
-  )
+  let ch := ch.getD (← Std.CloseableChannel.new)
+  Lean.modifyEnv (asyncState.modifyState · (fun _st =>
+    {name := name, index := 0, sendQuery := sendQuery, sendRawResult := sendRawResult, sendResult := sendResult, ch := ch }))
+  return ch
+
+private def getAsyncStateAndIncreaseIndex [Monad m] [MonadEnv m] [MonadLiftT BaseIO m] [MonadLiftT (ST IO.RealWorld) m] [MonadFinally m] : m AsyncState := do
+  let st := asyncState.getState (← getEnv)
+  Lean.modifyEnv (asyncState.modifyState · (fun _st => { st with index := st.index + 1 }))
+  return st
 
 def genUniqueFVarNames : MetaM (Std.HashMap FVarId String × Std.HashMap String Expr) := do
   let lCtx ← getLCtx
@@ -106,11 +114,8 @@ def prepareSmtQuery (hs : List Expr) (goalType : Expr) (fvNames : Std.HashMap FV
 
 def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.withContext do
   -- Retrieve and update the async state.
-  let (id, sendQuery, sendRawResult, sendResult, asyncChannel) ← async.atomically (fun ref => do
-    let st ← ref.get
-    let index' := st.index + 1
-    ref.set { st with index := index' }
-    return ((st.name, st.index), st.sendQuery, st.sendRawResult, st.sendResult, st.ch))
+  let st ← getAsyncStateAndIncreaseIndex
+  let (id, sendQuery, sendRawResult, sendResult, asyncChannel) := ((st.name, st.index), st.sendQuery, st.sendRawResult, st.sendResult, st.ch)
   try
   -- 0. Create a duplicate goal to preserve the original goal.
   let mv₁ := (← Meta.mkFreshExprMVar (← mv.getType)).mvarId!
