@@ -54,6 +54,7 @@ inductive AsyncOutput where
   | queryString (query : String)
   | rawResult (raw : Except cvc5.Error cvc5Result)
   | result (result : Smt.Result)
+  | exception (ex : Exception)
 deriving Inhabited
 
 structure AsyncState where
@@ -196,7 +197,9 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.with
     -- that will never come. We don't close in a `finally` block, since we
     -- want upstream users to be able to listen for results from multiple `smt`
     -- calls with the same name/channel.
-    asyncChannel.forM fun channel => do channel.close
+    asyncChannel.forM fun channel => do
+      let _ ← channel.send ((id, .exception ex))
+      channel.close
     throw ex
 
 namespace Tactic
