@@ -71,7 +71,7 @@ structure AsyncState where
   sendRawResult : Bool := false
   sendResult : Bool := true
   /-- The channel to send the output through. -/
-  ch :  Option (Std.Channel ((Name × Nat) × AsyncOutput)) := .none
+  ch :  Option (Std.CloseableChannel ((Name × Nat) × AsyncOutput)) := .none
 deriving Inhabited
 
 /-
@@ -87,9 +87,9 @@ initialize async : Std.Mutex AsyncState ← Std.Mutex.new default
 
 /-- Initialize the async state with the given name and (optional) channel. If
 no channel is provided, a new one is created and returned. -/
-def initAsyncState [Monad m] [MonadEnv m] [MonadLiftT BaseIO m] [MonadLiftT (ST IO.RealWorld) m] [MonadFinally m] (name : Name) (ch : Option (Std.Channel ((Name × Nat) × AsyncOutput)) := .none) (sendQuery := false) (sendRawResult := false) (sendResult := true): m (Std.Channel ((Name × Nat) × AsyncOutput)) := do
+def initAsyncState [Monad m] [MonadEnv m] [MonadLiftT BaseIO m] [MonadLiftT (ST IO.RealWorld) m] [MonadFinally m] (name : Name) (ch : Option (Std.CloseableChannel ((Name × Nat) × AsyncOutput)) := .none) (sendQuery := false) (sendRawResult := false) (sendResult := true): m (Std.CloseableChannel ((Name × Nat) × AsyncOutput)) := do
   async.atomically (fun ref => do
-    let ch := ch.getD (← Std.Channel.new)
+    let ch := ch.getD (← Std.CloseableChannel.new)
     ref.set { name := name, index := 0, ch := ch, sendQuery := sendQuery, sendRawResult := sendRawResult, sendResult := sendResult }
     return ch
   )
@@ -115,6 +115,7 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.with
     let index' := st.index + 1
     ref.set { st with index := index' }
     return ((st.name, st.index), st.sendQuery, st.sendRawResult, st.sendResult, st.ch))
+  try
   -- 0. Create a duplicate goal to preserve the original goal.
   let mv₀ := (← Meta.mkFreshExprMVar (← mv.getType)).mvarId!
   -- 2. Preprocess the hints and goal.
@@ -194,6 +195,13 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.with
     let model := (uss'.zip cs' ++ ufs'.zip vs')
     asyncChannel.forM fun channel => do if sendResult then let _ ← channel.send ((id, .result (.sat (.some model))))
     return .sat (.some model)
+  catch ex =>
+    -- Close the channel in case of an error, so users don't wait for results
+    -- that will never come. We don't close in a `finally` block, since we
+    -- want upstream users to be able to listen for results from multiple `smt`
+    -- calls with the same name/channel.
+    asyncChannel.forM fun channel => do channel.close
+    throw ex
 
 namespace Tactic
 
