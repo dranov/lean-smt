@@ -164,7 +164,9 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.with
     let uc := hs.filter uc.flatten.contains
     if cfg.trust then
       -- 6. Trust the result by admitting original goal.
-      mv.admit true
+      -- We make this a non-synthetic `sorry` because morally it is requested
+      -- by the user rather than showing a tactic failure.
+      mv.admit (synthetic := false)
       asyncChannel.forM fun channel => do let _ ← channel.send ((id, .result (.unsat [] uc)))
       return .unsat [] uc
     -- 7. Reconstruct proof.
