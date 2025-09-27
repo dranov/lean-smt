@@ -95,7 +95,8 @@ def initAsyncState [Monad m] [MonadEnv m] [MonadLiftT BaseIO m] [MonadLiftT (ST 
 
 private def getAsyncStateAndIncreaseIndex [Monad m] [MonadEnv m] [MonadLiftT BaseIO m] [MonadLiftT (ST IO.RealWorld) m] [MonadFinally m] : m AsyncState := do
   let st := asyncState.getState (← getEnv)
-  Lean.modifyEnv (asyncState.modifyState · (fun _st => { st with index := st.index + 1 }))
+  if st.ch.isSome then
+    Lean.modifyEnv (asyncState.modifyState · (fun _st => { st with index := st.index + 1 }))
   return st
 
 def genUniqueFVarNames : MetaM (Std.HashMap FVarId String × Std.HashMap String Expr) := do
