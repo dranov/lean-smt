@@ -14,6 +14,7 @@ import Lean
 import Qq
 import Mathlib.Analysis.SpecialFunctions.Trigonometric.Basic
 import Mathlib.Analysis.Real.Pi.Bounds
+import Mathlib.Data.Rat.Cast.Order
 
 import Smt.Reconstruct.Util
 import Smt.Reconstruct.Real.Polynorm
@@ -35,7 +36,7 @@ def expr_pi_lower : Expr :=
     (mkConst ``Rat) (Lean.Expr.const `Rat.instOfScientific [])
     (.lit (.natVal 314159265358979323846)) (mkConst ``Bool.true) (.lit (.natVal 20))
 
-theorem ratCast_le {x y : ℚ} : x ≤ y → (x : ℝ) ≤ (y : ℝ) := fun a => GCongr.ratCast_le_ratCast a
+theorem ratCast_le {x y : ℚ} : x ≤ y → (x : ℝ) ≤ (y : ℝ) := fun a => Rat.cast_le.mpr a
 
 def ratOfFloat : Expr → Expr
   | .app (.app (.app (.app (.app a _) _) d) e) f =>
