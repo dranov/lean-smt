@@ -50,8 +50,15 @@ structure Config where
   extraSolverOptions : List (String × String) := []
 deriving Inhabited, Repr
 
+structure Model where
+  sorts : Array (Expr × Expr)
+  values : Array (Expr × Expr)
+
+def Model.isEmpty (model : Model) : Bool :=
+  model.sorts.isEmpty && model.values.isEmpty
+
 inductive Result where
-  | sat (model : Option (Array (Expr × Expr)))
+  | sat (model : Option Model)
   | unsat (mvs : List MVarId) (usedHints : Array Expr)
   | unknown (reason : String)
 
@@ -201,7 +208,7 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.with
     let (ufs', state) ← (ufs.mapM Reconstruct.reconstructTerm).run ctx state
     let ufs' := ufs'.map fun uf => (map[uf]?.getD #[uf])[0]?.getD uf
     let (vs', _) ← (vs.mapM Reconstruct.reconstructTerm).run ctx state
-    let model := (uss'.zip cs' ++ ufs'.zip vs')
+    let model := { sorts := uss'.zip cs', values := ufs'.zip vs' }
     asyncChannel.forM fun channel => do if sendResult then let _ ← channel.send ((id, .result (.sat (.some model))))
     return .sat (.some model)
   catch ex =>
@@ -331,7 +338,7 @@ def evalSmtCore (cfg : TSyntax ``Parser.Tactic.optConfig) (hs : TSyntax ``smtHin
         throwError "unable to prove goal, either it is false or you need to provide more facts. Could not produce a counter-example. Try introducing variables into the local context to get a counter-example."
       else
         let mut md := m!""
-        for (v, t) in model do
+        for (v, t) in (model.sorts ++ model.values) do
           md := md ++ m!"\n  {v} = {t}"
         throwError "unable to prove goal, either it is false or you need to provide more facts. Here is a potential counter-example:\n{md}"
     | .unsat mvs uc =>
