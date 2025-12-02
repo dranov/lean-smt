@@ -47,8 +47,29 @@ structure Config where
   extraSolverOptions : List (String × String) := []
 deriving Inhabited, Repr
 
+/-- A context for elaborating the metavariables in the model. Necessary to
+enable storing the model and printing it at a later time. This is the same as
+the `ExprWithCtx` structure in `ProofWidgets.Compat`, but without the `expr`
+field. -/
+structure ModelContext where
+  ci : Elab.ContextInfo
+  lctx : LocalContext
+  linsts : LocalInstances
+deriving TypeName
+
+def ModelContext.save: MetaM ModelContext :=
+  return {
+    ci := { ← CommandContextInfo.save with }
+    lctx := ← getLCtx
+    linsts := ← Meta.getLocalInstances
+  }
+
 structure Model where
+  /-- Context information for the free variables in the model. -/
+  ctx : ModelContext
+  /-- Pairs of free variables and their values in the model. -/
   sorts : Array (Expr × Expr)
+  /-- Pairs of free variables and their values in the model. -/
   values : Array (Expr × Expr)
 
 def Model.isEmpty (model : Model) : Bool :=
@@ -207,7 +228,7 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.with
     let (ufs', state) ← (ufs.mapM Reconstruct.reconstructTerm).run ctx state
     let ufs' := ufs'.map fun uf => (map[uf]?.getD #[uf])[0]?.getD uf
     let (vs', _) ← (vs.mapM Reconstruct.reconstructTerm).run ctx state
-    let model := { sorts := uss'.zip cs', values := ufs'.zip vs' }
+    let model := { ctx := ← mv₀.withContext ModelContext.save, sorts := uss'.zip cs', values := ufs'.zip vs' }
     asyncChannel.forM fun channel => do if sendResult then let _ ← channel.send ((id, .result (.sat (.some model))))
     return .sat (.some model)
   catch ex =>
