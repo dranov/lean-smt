@@ -10,16 +10,32 @@ import Smt.Translate
 
 namespace Smt.Translate.Int
 
+open Lean Expr
 open Translator Term
+open Smt (constPattern)
 
 private def mkInt : Lean.Expr :=
   .const ``Int []
 
-@[smt_translate] def translateType : Translator := fun e => match e with
+/-- Patterns for translateType: matches `Int`. -/
+def translateTypePatterns : Array Expr := #[mkConst ``Int]
+
+@[smt_translate translateTypePatterns] def translateType : Translator := fun e => match e with
   | .const ``Int _ => return symbolT "Int"
   | _              => return none
 
-@[smt_translate] def translateInt : Translator := fun e => do
+/-- Patterns for translateInt: matches Int literals and arithmetic operations. -/
+def translateIntPatterns : Array Expr := #[
+  constPattern ``OfNat.ofNat 3 1,   -- nat literals (1 universe param)
+  constPattern ``Neg.neg 3 1,       -- negation (1 universe param)
+  constPattern ``HAdd.hAdd 6 3,     -- addition (3 universe params)
+  constPattern ``HSub.hSub 6 3,     -- subtraction (3 universe params)
+  constPattern ``HMul.hMul 6 3,     -- multiplication (3 universe params)
+  constPattern ``HDiv.hDiv 6 3,     -- division (3 universe params)
+  constPattern ``HMod.hMod 6 3      -- modulo (3 universe params)
+]
+
+@[smt_translate translateIntPatterns] def translateInt : Translator := fun e => do
   if let some n := e.natLitOf? mkInt then
     return literalT (toString n)
   else if let some x := e.negOf? mkInt then
@@ -37,7 +53,15 @@ private def mkInt : Lean.Expr :=
   else
     return none
 
-@[smt_translate] def translateProp : Translator := fun e => do
+/-- Patterns for translateProp: matches comparison operators on Int. -/
+def translatePropPatterns : Array Expr := #[
+  constPattern ``LT.lt 4 1,   -- @LT.lt α inst x y (1 universe param)
+  constPattern ``LE.le 4 1,   -- @LE.le α inst x y (1 universe param)
+  constPattern ``GE.ge 4 1,   -- @GE.ge α inst x y (1 universe param)
+  constPattern ``GT.gt 4 1    -- @GT.gt α inst x y (1 universe param)
+]
+
+@[smt_translate translatePropPatterns] def translateProp : Translator := fun e => do
   if let some (x, y) := e.ltOf? mkInt then
     return mkApp2 (symbolT "<") (← applyTranslators! x) (← applyTranslators! y)
   else if let some (x, y) := e.leOf? mkInt then

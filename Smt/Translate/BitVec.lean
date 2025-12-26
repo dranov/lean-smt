@@ -12,6 +12,7 @@ namespace Smt.Translate.BitVec
 
 open Lean Expr
 open Translator Term
+open Smt (constPattern)
 
 /-- Make a binary bitvector literal with value `n` and width `w`. -/
 private def mkLit (w : Nat) (n : Nat) : Term :=
@@ -35,13 +36,44 @@ private def reduceBitVecWidth? (e : Expr) : MetaM (Option Nat) := do
     throwError "bitvector width{indentD w}\nis 0 in{indentD e}"
   return w'
 
-@[smt_translate] def translateType : Translator := fun e => do
+/-- Patterns for translateType: matches `BitVec n`. -/
+def translateTypePatterns : Array Expr := #[constPattern ``BitVec 1]
+
+@[smt_translate translateTypePatterns] def translateType : Translator := fun e => do
   if let some w ← reduceBitVecWidth? e then
     return mkApp2 (symbolT "_") (symbolT "BitVec") (literalT (toString w))
   else
     return none
 
-@[smt_translate] def translateBitVec : Translator := fun e => do match_expr e with
+/-- Patterns for translateBitVec: matches BitVec operations. -/
+def translateBitVecPatterns : Array Expr := #[
+  constPattern ``HShiftLeft.hShiftLeft 6 3,   -- 3 universe params
+  constPattern ``HShiftRight.hShiftRight 6 3, -- 3 universe params
+  constPattern ``BitVec.zeroExtend 3 0,
+  constPattern ``BitVec.signExtend 3 0,
+  constPattern ``BitVec.ofNat 2 0,
+  constPattern ``OfNat.ofNat 3 1,             -- 1 universe param
+  constPattern ``Neg.neg 3 1,                 -- 1 universe param
+  constPattern ``Complement.complement 3 1,   -- 1 universe param
+  constPattern ``HAdd.hAdd 6 3,               -- 3 universe params
+  constPattern ``HSub.hSub 6 3,
+  constPattern ``HMul.hMul 6 3,
+  constPattern ``BitVec.smtUDiv 3 0,
+  constPattern ``HMod.hMod 6 3,
+  constPattern ``BitVec.smtSDiv 3 0,
+  constPattern ``BitVec.srem 3 0,
+  constPattern ``BitVec.smod 3 0,
+  constPattern ``HAnd.hAnd 6 3,
+  constPattern ``HOr.hOr 6 3,
+  constPattern ``HXor.hXor 6 3,
+  constPattern ``BitVec.zero 1 0,
+  constPattern ``BitVec.rotateLeft 3 0,
+  constPattern ``BitVec.rotateRight 3 0,
+  constPattern ``HAppend.hAppend 6 3,
+  constPattern ``BitVec.replicate 3 0
+]
+
+@[smt_translate translateBitVecPatterns] def translateBitVec : Translator := fun e => do match_expr e with
   | HShiftLeft.hShiftLeft α β _ _ x y =>
     let some _ ← reduceBitVecWidth? α | return none
     let some _ ← reduceBitVecWidth? β | return none
@@ -133,7 +165,15 @@ private def reduceBitVecWidth? (e : Expr) : MetaM (Option Nat) := do
                 (← applyTranslators! x)
   | _                  => return none
 
-@[smt_translate] def translateProp : Translator := fun e => do match_expr e with
+/-- Patterns for translateProp: matches comparison operators on BitVec. -/
+def translatePropPatterns : Array Expr := #[
+  constPattern ``LT.lt 4 1,   -- 1 universe param
+  constPattern ``LE.le 4 1,
+  constPattern ``GE.ge 4 1,
+  constPattern ``GT.gt 4 1
+]
+
+@[smt_translate translatePropPatterns] def translateProp : Translator := fun e => do match_expr e with
   | LT.lt α _ x y =>
     let some _ ← reduceBitVecWidth? α | return none
     return some (mkApp2 (symbolT "bvult") (← applyTranslators! x) (← applyTranslators! y))

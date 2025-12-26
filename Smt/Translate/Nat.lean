@@ -12,11 +12,24 @@ namespace Smt.Translate.Nat
 
 open Lean Expr
 open Translator Term
+open Smt (constPattern)
 
 private def mkNat : Lean.Expr :=
   .const ``Nat []
 
-@[smt_translate] def translateNat : Translator := fun e => do
+/-- Patterns for translateNat: matches Nat literals and arithmetic operations. -/
+def translateNatPatterns : Array Expr := #[
+  constPattern ``OfNat.ofNat 3 1,   -- nat literals (1 universe param)
+  mkConst ``Nat.zero,
+  constPattern ``Nat.succ 1 0,
+  constPattern ``HAdd.hAdd 6 3,     -- (3 universe params)
+  constPattern ``HSub.hSub 6 3,
+  constPattern ``HMul.hMul 6 3,
+  constPattern ``HDiv.hDiv 6 3,
+  constPattern ``HMod.hMod 6 3
+]
+
+@[smt_translate translateNatPatterns] def translateNat : Translator := fun e => do
   if let some n := e.natLitOf? mkNat then
     return literalT (toString n)
   else if let .const ``Nat.zero _ := e then
@@ -37,7 +50,15 @@ private def mkNat : Lean.Expr :=
   else
     return none
 
-@[smt_translate] def translateProp : Translator := fun e => do
+/-- Patterns for translateProp: matches comparison operators on Nat. -/
+def translatePropPatterns : Array Expr := #[
+  constPattern ``LT.lt 4 1,
+  constPattern ``LE.le 4 1,
+  constPattern ``GE.ge 4 1,
+  constPattern ``GT.gt 4 1
+]
+
+@[smt_translate translatePropPatterns] def translateProp : Translator := fun e => do
   if let some (m, n) := e.ltOf? mkNat then
     return mkApp2 (symbolT "<") (← applyTranslators! m) (← applyTranslators! n)
   else if let some (m, n) := e.leOf? mkNat then

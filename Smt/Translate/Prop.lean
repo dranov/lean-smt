@@ -12,14 +12,20 @@ namespace Smt.Translate.Prop
 
 open Lean Expr
 open Translator Term
+open Smt (constPattern)
 
 private def mkProp : Lean.Expr :=
   .sort 0
 
-@[smt_translate] def translateType : Translator := fun e => match e with
+/-- Patterns for translateType: matches `.sort 0` (Prop). -/
+def translateTypePatterns : Array Expr := #[.sort .zero]
+
+@[smt_translate translateTypePatterns] def translateType : Translator := fun e => match e with
   | .sort 0        => return symbolT "Bool"
   | _              => return none
 
+/-- Translator for Prop connectives: True, False, Not, And, Or, Eq, Ne, and implication.
+    This is a catch-all because implication (→) is represented via forallE which is hard to index. -/
 @[smt_translate] def translateProp : Translator := fun e => do
   if let .const ``True _ := e then
     return symbolT "true"
@@ -42,7 +48,10 @@ private def mkProp : Lean.Expr :=
   else
     return none
 
-@[smt_translate] def translateExists : Translator
+/-- Patterns for translateExists: matches `Exists _ _`. -/
+def translateExistsPatterns : Array Expr := #[constPattern ``Exists 2 1]  -- 1 universe param
+
+@[smt_translate translateExistsPatterns] def translateExists : Translator
   | e@(app (app (const `Exists _) _) f) => do
     let lam n t b bi := f | throwError "unexpected predicate {f} in {e}"
     withScopedName n b fun n => do
@@ -59,7 +68,10 @@ where
 
 /- @Eq.rec : {α : Sort u_2} →
   {a : α} → {motive : (a_1 : α) → a = a_1 → Sort u_1} → motive a (_ : a = a) → {a_1 : α} → (t : a = a_1) → motive a_1 t -/
-@[smt_translate] def translateEqRec : Translator
+/-- Patterns for translateEqRec: matches `@Eq.rec _ _ _ _ _ _`. -/
+def translateEqRecPatterns : Array Expr := #[constPattern ``Eq.rec 6 2]  -- 2 universe params
+
+@[smt_translate translateEqRecPatterns] def translateEqRec : Translator
   | app (app (app (app (app (app (const `Eq.rec _) _) _) _) e) _) _ => do
     trace[smt.translateEqRec] "found eq_rec body : {e}"
     applyTranslators? e
@@ -69,7 +81,10 @@ def emitIte (cond : Expr) (t : TranslationM Term) (f : TranslationM Term)
     : TranslationM (Option Term) := do
   return mkApp3 (symbolT "ite") (← applyTranslators! cond) (← t) (← f)
 
-@[smt_translate] def translateIte : Translator
+/-- Patterns for translateIte: matches `@ite _ _ _ _ _` and `@dite _ _ _ _ _`. -/
+def translateItePatterns : Array Expr := #[constPattern ``ite 5 1, constPattern ``dite 5 1]  -- 1 universe param each
+
+@[smt_translate translateItePatterns] def translateIte : Translator
   /- @ite : {α : Sort u_1} → (c : Prop) → [h : Decidable c] → α → α → α -/
   | app (app (app (app (app (const `ite _) _) c) _inst) a) b =>
     emitIte c (applyTranslators! a) (applyTranslators! b)

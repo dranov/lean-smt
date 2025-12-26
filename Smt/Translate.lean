@@ -6,6 +6,7 @@ Authors: Abdalrhman Mohamed, Wojciech Nawrocki
 -/
 
 import Lean
+import Lean.Meta.DiscrTree
 
 import Smt.Attribute
 import Smt.Translate.Term
@@ -28,6 +29,13 @@ namespace Smt
 
 open Lean Meta Expr
 open Attribute Term
+
+/-- Create a pattern expression for a constant applied to `arity` wildcard arguments.
+    The wildcards are metavariables that will match any subexpression.
+    Universe levels are set to `.zero` which works for DiscrTree matching. -/
+def constPattern (n : Name) (arity : Nat) (numUnivParams : Nat := 0) : Expr :=
+  let levels := List.replicate numUnivParams .zero
+  (List.range arity).foldl (fun e _ => mkApp e (mkMVar ⟨`_⟩)) (mkConst n levels)
 
 structure TranslationM.State where
   /-- Constants that the translated result depends on. We propagate these upwards during translation
@@ -58,6 +66,14 @@ The input expression is guaranteed to be well-typed in the `MetaM` context. The 
 - `none` when the translator doesn't support the input -/
 abbrev Translator := Expr → TranslationM (Option Term)
 
+/-- Index structure for fast translator lookup using DiscrTree. -/
+structure TranslatorIndex where
+  /-- DiscrTree mapping expression patterns to translator names.
+      Multiple translators matching the same pattern are accumulated automatically. -/
+  tree : DiscrTree Name := .empty
+  /-- Translator names without patterns (catch-all) that must be tried for every expression. -/
+  catchAll : Array Name := #[]
+
 namespace Translator
 
 private unsafe def getTranslatorsUnsafe : MetaM (List (Translator × Name)) := do
@@ -75,6 +91,54 @@ private unsafe def getTranslatorsUnsafe : MetaM (List (Translator × Name)) := d
     Lean environment. -/
 @[implemented_by getTranslatorsUnsafe]
 opaque getTranslators : MetaM (List (Translator × Name))
+
+/-- Replace fake metavariables (created at compile time) with fresh metavariables
+    that are valid in the current MetaM context. -/
+private partial def refreshMetavars (e : Expr) : MetaM Expr := do
+  match e with
+  | .mvar _ => mkFreshExprMVar none
+  | .app f a => return mkApp (← refreshMetavars f) (← refreshMetavars a)
+  | .lam n t b bi => return .lam n (← refreshMetavars t) (← refreshMetavars b) bi
+  | .forallE n t b bi => return .forallE n (← refreshMetavars t) (← refreshMetavars b) bi
+  | .letE n t v b nd => return .letE n (← refreshMetavars t) (← refreshMetavars v) (← refreshMetavars b) nd
+  | .mdata m e => return .mdata m (← refreshMetavars e)
+  | .proj tn i e => return .proj tn i (← refreshMetavars e)
+  | _ => return e
+
+private unsafe def buildTranslatorIndexUnsafe : MetaM TranslatorIndex := do
+  let env ← getEnv
+  let names := ((smtExt.getState env).getD ``Translator {}).toList
+  let patternsMap := translatorPatternsExt.getState env
+  let mut tree : DiscrTree Name := .empty
+  let mut catchAll : Array Name := #[]
+  for name in names do
+    match patternsMap[name]? with
+    | some patternsName =>
+      -- This translator has patterns - get them and insert into DiscrTree
+      let patterns ← IO.ofExcept <| Id.run <| ExceptT.run <|
+        env.evalConst (Array Expr) Options.empty patternsName
+      for pat in patterns do
+        -- Replace fake metavariables with fresh ones valid in current context
+        let pat ← refreshMetavars pat
+        tree ← tree.insert pat name
+    | none =>
+      -- No patterns - add to catch-all list
+      catchAll := catchAll.push name
+  return { tree, catchAll }
+
+/-- Builds a TranslatorIndex from registered translators and their patterns.
+    Translators with patterns are indexed in a DiscrTree for fast lookup.
+    Translators without patterns go into the catch-all list. -/
+@[implemented_by buildTranslatorIndexUnsafe]
+opaque buildTranslatorIndex : MetaM TranslatorIndex
+
+private unsafe def getTranslatorByNameUnsafe (name : Name) : MetaM Translator := do
+  let env ← getEnv
+  IO.ofExcept <| Id.run <| ExceptT.run <| env.evalConst Translator Options.empty name
+
+/-- Looks up a translator function by its declaration name. -/
+@[implemented_by getTranslatorByNameUnsafe]
+opaque getTranslatorByName (name : Name) : MetaM Translator
 
 /-- Return a cached translation of `e` if found, otherwise run `k e` and cache the result. -/
 def withCache (k : Translator) (e : Expr) : TranslationM (Option Term) := do
@@ -124,15 +188,26 @@ expression and if one succeeds, its result is returned. Otherwise, `e` is split 
 which are then recursively translated and put together into an SMT-LIB term. The traversal proceeds
 in a top-down, depth-first order. -/
 partial def applyTranslators? : Translator := withCache fun e => do
-  let ts ← getTranslators
-  go ts e
+  let index ← buildTranslatorIndex
+  go index e
   where
-    go (ts : List (Translator × Name)) : Translator := fun e => do
-      -- First try all translators on the whole expression
-      -- TODO: Use `DiscrTree` to index the translators instead of naively looping
-      for (t, nm) in ts do
-        if let some tm ← t e then
-          trace[smt.translate.expr] "{e} =({nm})=> {tm}"
+    /-- Try a single translator by name on an expression. -/
+    tryTranslator (nm : Name) (e : Expr) : TranslationM (Option Term) := do
+      let t ← getTranslatorByName nm
+      if let some tm ← t e then
+        trace[smt.translate.expr] "{e} =({nm})=> {tm}"
+        return some tm
+      return none
+    go (index : TranslatorIndex) : Translator := fun e => do
+      -- First try indexed translators that match this expression's structure
+      let candidates ← index.tree.getMatch e
+      for nm in candidates do
+        if let some tm ← tryTranslator nm e then
+          return tm
+
+      -- Then try catch-all translators (those without patterns)
+      for nm in index.catchAll do
+        if let some tm ← tryTranslator nm e then
           return tm
 
       -- Then try splitting subexpressions
@@ -159,7 +234,7 @@ partial def applyTranslators? : Translator := withCache fun e => do
       | letE n t v b _ =>
         let tmB ← Meta.withLetDecl n t v (translateBody b)
         return letT n.toString (← applyTranslators! v) tmB
-      | mdata _ e => go ts e
+      | mdata _ e => go index e
       | e         => throwError "cannot translate {e}"
     translateBody (b : Expr) (x : Expr) : TranslationM Term := do
       modify fun s => { s with localFVars := s.localFVars.insert x.fvarId! }

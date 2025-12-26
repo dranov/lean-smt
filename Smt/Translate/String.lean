@@ -12,20 +12,29 @@ namespace Smt.Translate.String
 
 open Lean Expr
 open Translator Term
+open Smt (constPattern)
 
 private def mkString : Expr :=
   .const ``String []
 
-@[smt_translate] def translateType : Translator := fun e => match e with
+/-- Patterns for translateType: matches `String`. -/
+def translateTypePatterns : Array Expr := #[mkConst ``String]
+
+@[smt_translate translateTypePatterns] def translateType : Translator := fun e => match e with
   | .const ``String _ => return symbolT "String"
   | _                 => return none
 
-@[smt_translate] def translateInt : Translator := fun e => do
+/-- Patterns for translateInt: matches `String.length`. -/
+def translateIntPatterns : Array Expr := #[constPattern ``String.length 1]
+
+@[smt_translate translateIntPatterns] def translateInt : Translator := fun e => do
   if let some s := e.app1? ``String.length then
     return appT (symbolT "str.len") (← applyTranslators! s)
   else
     return none
 
+/-- Translator for String operations and literals.
+    This is a catch-all because string literals use `.lit` which can't be indexed. -/
 @[smt_translate] def translateString : Translator := fun e => do
   if let .lit (.strVal s) := e then
     return literalT s!"\"{s}\""
@@ -36,7 +45,13 @@ private def mkString : Expr :=
   else
     return none
 
-@[smt_translate] def translateProp : Translator := fun e => do
+/-- Patterns for translateProp: matches comparison operators on String. -/
+def translatePropPatterns : Array Expr := #[
+  constPattern ``LT.lt 4 1,   -- 1 universe param
+  constPattern ``GT.gt 4 1    -- 1 universe param
+]
+
+@[smt_translate translatePropPatterns] def translateProp : Translator := fun e => do
   if let some (x, y) := e.ltOf? mkString then
     return mkApp2 (symbolT "str.<") (← applyTranslators! x) (← applyTranslators! y)
   else if let some (x, y) := e.gtOf? mkString then
