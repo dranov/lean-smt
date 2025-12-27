@@ -14,31 +14,54 @@ open cvc5
 /-- Create an SMT constraint that the given sort has cardinality *at most* `n`.
     `∃c₁, ..., cₙ. ∀x. (x = c₁) ∨ ... ∨ (x = cₙ)` -/
 def mkSortCardinalityConstraint (tm : TermManager) (s : cvc5.Sort) (n : Nat) : Env Term := do
-  -- Create n bound variables for the existential quantification
-  let mut existVars : Array Term := #[]
-  for i in [:n] do
-    existVars := existVars.push (← tm.mkVar s s!"_card_{i}")
-
-  -- Create bound variable x for the universal quantification
+  let existVars ← (List.range n).toArray.mapM fun i => tm.mkVar s s!"_card_{i}"
   let x ← tm.mkVar s "_card_x"
+  let eqs ← existVars.mapM fun c => tm.mkTerm .EQUAL #[x, c]
+  let disj ← if eqs.size == 1 then pure eqs[0]! else tm.mkTerm .OR eqs
+  let forallBody ← tm.mkTerm .FORALL #[← tm.mkTerm .VARIABLE_LIST #[x], disj]
+  tm.mkTerm .EXISTS #[← tm.mkTerm .VARIABLE_LIST existVars, forallBody]
 
-  -- Build disjunction: (x = c₁) ∨ (x = c₂) ∨ ... ∨ (x = cₙ)
-  let mut eqs : Array Term := #[]
-  for c in existVars do
-    eqs := eqs.push (← tm.mkTerm .EQUAL #[x, c])
+/-- Find the minimum cardinality for a single sort using exponential + binary search.
+    Returns `none` if minimization failed, or `some n` if minimized to cardinality `n`.
+    We use exponential search to find bounds first, which is efficient when the minimum
+    cardinality is small (common case). -/
+partial def minimizeSortCardinality (slv : Solver) (tm : TermManager) (s : cvc5.Sort)
+    (checkTimeout : Env Bool) : Env (Option Nat) := do
+  let checkCard (n : Nat) : Env (Option Bool) := do
+    if ← checkTimeout then return none
+    let constraint ← mkSortCardinalityConstraint tm s n
+    let result ← slv.checkSatAssuming #[constraint]
+    if result.isUnknown then return none
+    return some result.isSat
 
-  let disj ← if eqs.size == 1 then
-    pure eqs[0]!
-  else
-    tm.mkTerm .OR eqs
+  -- Exponential search: test 1, 2, 4, 8, ... until SAT.
+  -- Returns (lo, hi) where lo = prev+1 (first untested) and hi = n (first SAT).
+  let rec findBounds (prev n : Nat) : Env (Option (Nat × Nat)) := do
+    if n > 100 then return none
+    match ← checkCard n with
+    | none => return none
+    | some true => return some (prev + 1, n)
+    | some false => findBounds n (n * 2)
 
-  -- Build ∀x. disj
-  let forallVarList ← tm.mkTerm .VARIABLE_LIST #[x]
-  let forallBody ← tm.mkTerm .FORALL #[forallVarList, disj]
+  -- Binary search for minimum in [lo, hi] where hi is known to succeed
+  let rec binarySearch (lo hi : Nat) : Env (Option Nat) := do
+    if lo >= hi then return some lo
+    let mid := (lo + hi) / 2
+    match ← checkCard mid with
+    | none => return none
+    | some true => binarySearch lo mid
+    | some false => binarySearch (mid + 1) hi
 
-  -- Build ∃c₁, ..., cₙ. (∀x. disj)
-  let existsVarList ← tm.mkTerm .VARIABLE_LIST existVars
-  tm.mkTerm .EXISTS #[existsVarList, forallBody]
+  match ← findBounds 0 1 with
+  | none => return none
+  | some (lo, hi) =>
+    match ← binarySearch lo hi with
+    | none => return none
+    | some n =>
+      -- We minimised the sort; keep the constraint for further sort
+      -- minimisations (if any)
+      slv.assertFormula (← mkSortCardinalityConstraint tm s n)
+      return some n
 
 /-- Minimize sort cardinalities by iteratively finding the smallest cardinality for each sort.
     Takes an optional timeout in milliseconds for the overall minimization budget.
@@ -47,37 +70,17 @@ def mkSortCardinalityConstraint (tm : TermManager) (s : cvc5.Sort) (n : Nat) : E
 def minimizeSorts (slv : Solver) (tm : TermManager)
     (uss : Array cvc5.Sort) (timeoutMs : Option Nat := none) : Env Bool := do
   let startTime ← IO.monoMsNow
-  for s in uss do
-    -- Only minimize uninterpreted sorts
-    if !s.isUninterpretedSort then
-      continue
-
-    let mut n := 1
-    let mut found := false
-    while !found do
-      -- Check overall timeout budget
-      if let some budget := timeoutMs then
-        let elapsed := (← IO.monoMsNow) - startTime
-        if elapsed > budget then
-          return false
-
-      let constraint ← mkSortCardinalityConstraint tm s n
-      let result ← slv.checkSatAssuming #[constraint]
-
-      if result.isSat then
-        -- Found minimal cardinality, permanently add constraint
-        slv.assertFormula constraint
-        found := true
-      else if result.isUnknown then
-        -- Timeout or unknown during minimization, give up
-        return false
-      else
-        -- UNSAT: need larger cardinality
-        n := n + 1
-        -- Safety bound to prevent infinite loop
-        if n > 100 then
-          return false
-
+  let checkTimeout : Env Bool := do
+    if let some budget := timeoutMs then
+      return (← IO.monoMsNow) - startTime > budget
+    return false
+  let uninterpSorts := uss.filter (·.isUninterpretedSort)
+  let mut cardinalities : Array (cvc5.Sort × Nat) := #[]
+  for s in uninterpSorts do
+    match ← minimizeSortCardinality slv tm s checkTimeout with
+    | some n => cardinalities := cardinalities.push (s, n)
+    | none => return false
+  dbg_trace "Minimized sort cardinalities: {cardinalities}"
   return true
 
 end Smt.Minimize
