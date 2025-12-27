@@ -45,6 +45,10 @@ structure Config where
   showQuery : Bool := false
   /-- Options to pass to the solver, in addition to the default ones. -/
   extraSolverOptions : List (String × String) := []
+  /-- Whether to minimize the model by finding smallest sort cardinalities. -/
+  minimizeModel : Bool := false
+  /-- Timeout in seconds for model minimization. Uses main timeout if not set. -/
+  minimizeTimeout : Option Nat := none
 deriving Inhabited, Repr
 
 /-- A context for elaborating the metavariables in the model. Necessary to
@@ -174,7 +178,8 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.with
     trace[smt] "\nquery:\n{query}"
     asyncChannel.forM fun channel => do if sendQuery then let _ ← channel.send ((id, .queryString query))
   -- 4. Run the solver.
-  let res ← solve (Command.cmdsAsQuery cmds) cfg.timeout (defaultSolverOptions ++ cfg.extraSolverOptions)
+  let res ← solve (Command.cmdsAsQuery cmds) cfg.timeout
+      (defaultSolverOptions ++ cfg.extraSolverOptions) cfg.minimizeModel cfg.minimizeTimeout
   -- trace[smt] "\nresult: {res}"
   asyncChannel.forM fun channel => do if sendRawResult then let _ ← channel.send ((id, .rawResult res))
   match res with
