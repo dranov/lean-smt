@@ -45,6 +45,10 @@ structure Config where
   showQuery : Bool := false
   /-- Options to pass to the solver, in addition to the default ones. -/
   extraSolverOptions : List (String × String) := []
+  /-- Whether to minimize the model by finding smallest sort cardinalities. -/
+  minimizeModel : Bool := false
+  /-- Timeout in seconds for model minimization. Uses main timeout if not set. -/
+  minimizeTimeout : Option Nat := none
 deriving Inhabited, Repr
 
 inductive Result where
@@ -90,7 +94,8 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.with
     trace[smt] "goal: {goalType}"
     trace[smt] "\nquery:\n{Command.cmdsAsQuery (cmds ++ [.checkSat])}"
   -- 4. Run the solver.
-  let res ← solve (Command.cmdsAsQuery cmds) cfg.timeout (defaultSolverOptions ++ cfg.extraSolverOptions)
+  let res ← solve (Command.cmdsAsQuery cmds) cfg.timeout
+      (defaultSolverOptions ++ cfg.extraSolverOptions) cfg.minimizeModel cfg.minimizeTimeout
   -- trace[smt] "\nresult: {res}"
   match res with
   | .error e =>

@@ -9,6 +9,7 @@ import cvc5
 import Qq
 
 import Smt.Attribute
+import Smt.Minimize
 
 namespace Smt
 
@@ -260,7 +261,9 @@ def defaultSolverOptions : List (String × String) := [
 ]
 
 open cvc5 in
-def solve (query : String) (timeout : Option Nat) (options : List (String × String)) : MetaM (Except cvc5.Error cvc5Result) :=
+def solve (query : String) (timeout : Option Nat) (options : List (String × String))
+    (minimize : Bool := false) (minimizeTimeout : Option Nat := none) :
+    MetaM (Except cvc5.Error cvc5Result) :=
   profileitM Exception "smt" {} do
   withTraceNode `smt.solve traceSolve do cvc5.run do
     let tm ← TermManager.new
@@ -276,8 +279,14 @@ def solve (query : String) (timeout : Option Nat) (options : List (String × Str
     let res ← slv.checkSat
     trace[smt.solve] m!"result: {res}"
     if res.isSat then
-      let iss ← uss.mapM fun us => return (us, ← slv.getModelDomainElements us)
-      let ifs ← ufs.mapM fun uf => return (uf, ← slv.getValue uf)
+      -- Store original model, then optionally minimize
+      let mut iss ← uss.mapM fun us => return (us, ← slv.getModelDomainElements us)
+      let mut ifs ← ufs.mapM fun uf => return (uf, ← slv.getValue uf)
+      if minimize then
+        let timeoutMs := minimizeTimeout.map (· * 1000)
+        if ← Minimize.minimizeSorts slv tm uss timeoutMs then
+          iss ← uss.mapM fun us => return (us, ← slv.getModelDomainElements us)
+          ifs ← ufs.mapM fun uf => return (uf, ← slv.getValue uf)
       trace[smt.solve] "model:\n{iss}\n{ifs}"
       return .sat { iss, ifs }
     else if res.isUnsat then
