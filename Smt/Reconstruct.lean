@@ -284,7 +284,7 @@ def solve (query : String) (timeout : Option Nat) (options : List (String × Str
       let mut ifs ← ufs.mapM fun uf => return (uf, ← slv.getValue uf)
       if minimize then
         let timeoutMs := minimizeTimeout.map (· * 1000)
-        if ← Minimize.minimizeSorts slv tm uss timeoutMs then
+        if ← Minimize.minimizeSorts slv tm uss ufs timeoutMs then
           iss ← uss.mapM fun us => return (us, ← slv.getModelDomainElements us)
           ifs ← ufs.mapM fun uf => return (uf, ← slv.getValue uf)
       trace[smt.solve] "model:\n{iss}\n{ifs}"
