@@ -120,8 +120,8 @@ def minimizeSorts (slv : Solver) (tm : TermManager)
       | some n => relCards := relCards.push (rel, n)
       | none => return false
 
-  dbg_trace "Minimized sort cardinalities: {sortCards}"
-  dbg_trace "Minimized relation sizes: {relCards}"
+  -- dbg_trace "Minimized sort cardinalities: {sortCards}"
+  -- dbg_trace "Minimized relation sizes: {relCards}"
 
   -- Re-check satisfiability after adding constraints so the solver is in a
   -- valid state for model extraction
