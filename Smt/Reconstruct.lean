@@ -222,6 +222,7 @@ def traceReconstructProof (r : Except Exception (List Expr × List Expr × Expr 
 open Qq in
 partial def reconstructProof (pf : cvc5.Proof) (ctx : Reconstruct.Context) :
   MetaM (List Expr × List Expr × Expr × Expr × List MVarId) :=
+  withTraceNode `smt.perf.reconstruct (fun _ => return "reconstructProof") do
   withTraceNode `smt.reconstruct.proof traceReconstructProof do
   let (dfns, state) ← (pf.getArguments.toList.mapM Reconstruct.reconstructTerm).run ctx {}
   let (ps, state) ← (pf.getChildren[0]!.getArguments.toList.mapM Reconstruct.reconstructTerm).run ctx state
