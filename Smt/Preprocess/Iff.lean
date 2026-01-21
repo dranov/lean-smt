@@ -27,7 +27,9 @@ def replaceIff (e : Expr) : MetaM Expr :=
 def containsIff (e : Expr) : Bool :=
   (Expr.const ``Iff []).occurs e
 
-def elimIff (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.withContext do
+def elimIff (mv : MVarId) (hs : Array Expr) : MetaM Result :=
+  withTraceNode (`smt.perf.preprocess ++ `elimIff) (fun _ => return "elimIff") do
+  mv.withContext do
   let t ← instantiateMVars (← mv.getType)
   let ts ← hs.mapM (Meta.inferType · >>= instantiateMVars)
   if !(containsIff t || ts.any containsIff) then

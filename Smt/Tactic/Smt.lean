@@ -147,7 +147,15 @@ def prepareSmtQuery (hs : List Expr) (goalType : Expr) (fvNames : Std.HashMap FV
   Lean.Meta.withLocalDeclD goalId.name (mkNot goalType) fun g =>
   Query.generateQuery g hs fvNames
 
-def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.withContext do
+private def traceSmtResult (r : Except Exception Result) : MetaM MessageData :=
+  return match r with
+  | .ok (.unsat ..)   => m!"{checkEmoji} unsat"
+  | .ok (.sat ..)     => m!"sat"
+  | .ok (.unknown r)  => m!"unknown: {r}"
+  | .error _          => m!"{bombEmoji}"
+
+def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result :=
+  mv.withContext do
   -- Retrieve and update the async state.
   let st ← getAsyncStateAndIncreaseIndex
   let (id, sendQuery, sendRawResult, sendResult, asyncChannel) := ((st.name, st.index), st.sendQuery, st.sendRawResult, st.sendResult, st.ch)
@@ -161,12 +169,14 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.with
   -- Run `elimIff` after embedding, in case embedding introduces `↔` in the goal.
   if cfg.elimIff then
     steps := steps.push Preprocess.elimIff
-  let ⟨map, hs₁, mv₁⟩ ← Preprocess.applySteps mv₀ hs steps
+  let ⟨map, hs₁, mv₁⟩ ← withTraceNode `smt.perf.preprocess (fun _ => return "preprocess") do
+    Preprocess.applySteps mv₀ hs steps
   mv₁.withContext do
   let goalType : Q(Prop) ← mv₁.getType
   -- 3. Generate the SMT query.
   let (fvNames₁, fvNames₂) ← genUniqueFVarNames
-  let cmds ← prepareSmtQuery hs₁.toList (← mv₁.getType) fvNames₁
+  let cmds ← withTraceNode `smt.perf.translate (fun _ => return "translate") do
+    prepareSmtQuery hs₁.toList (← mv₁.getType) fvNames₁
   let cmds := .setLogic "ALL" :: cmds
   if cfg.showQuery then
     logInfo m!"goal: {goalType}\n\nquery:\n{Command.cmdsAsQuery (cmds ++ [.checkSat])}"
@@ -178,7 +188,8 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.with
     trace[smt] "\nquery:\n{query}"
     asyncChannel.forM fun channel => do if sendQuery then let _ ← channel.send ((id, .queryString query))
   -- 4. Run the solver.
-  let res ← solve (Command.cmdsAsQuery cmds) cfg.timeout
+  let res ← withTraceNode `smt.perf.solve (fun _ => return "solve") do
+    solve (Command.cmdsAsQuery cmds) cfg.timeout
       (defaultSolverOptions ++ cfg.extraSolverOptions) cfg.minimizeModel cfg.minimizeTimeout
   -- trace[smt] "\nresult: {res}"
   asyncChannel.forM fun channel => do if sendRawResult then let _ ← channel.send ((id, .rawResult res))
@@ -209,7 +220,8 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result := mv.with
       asyncChannel.forM fun channel => do let _ ← channel.send ((id, .result (.unsat [] uc)))
       return .unsat [] uc
     -- 7. Reconstruct proof.
-    let (_, ps, p, hp, mvs) ← reconstructProof pf ctx
+    let (_, ps, p, hp, mvs) ← withTraceNode `smt.perf.reconstruct (fun _ => return "reconstruct") do
+      reconstructProof pf ctx
     let mv₂ ← mv₁.assert (← mkFreshId) p hp
     let ⟨_, mv₃⟩ ← mv₂.intro1
     let mut gs ← mv₃.apply (← Meta.mkAppOptM ``Prop.implies_of_not_and #[listExpr ps.dropLast q(Prop), goalType])
