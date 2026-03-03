@@ -195,9 +195,10 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result :=
     trace[smt] "\nquery:\n{query}"
     asyncChannel.forM fun channel => do if sendQuery then let _ ← channel.send ((id, .queryString query))
   -- 4. Run the solver.
+  let options := defaultSolverOptions ++ if cfg.trust then [] else [("produce-proofs", "true")] ++ cfg.extraSolverOptions
   let res ← withTraceNode `smt.perf.solve (fun _ => return "solve") do
-    solve (Command.cmdsAsQuery cmds) cfg.timeout
-      (defaultSolverOptions ++ cfg.extraSolverOptions) cfg.minimizeModel cfg.minimizeTimeout
+    solve (Command.cmdsAsQuery cmds) cfg.timeout (!cfg.trust) options
+      cfg.minimizeModel cfg.minimizeTimeout
   -- trace[smt] "\nresult: {res}"
   asyncChannel.forM fun channel => do if sendRawResult then let _ ← channel.send ((id, .rawResult res))
   match res with
@@ -227,6 +228,7 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result :=
       asyncChannel.forM fun channel => do let _ ← channel.send ((id, .result (.unsat [] uc)))
       return .unsat [] uc
     -- 7. Reconstruct proof.
+    let some pf := pf | throwError "failed to reconstruct proof for unsat result"
     let (_, ps, p, hp, mvs) ← withTraceNode `smt.perf.reconstruct (fun _ => return "reconstruct") do
       reconstructProof pf ctx
     let mv₂ ← mv₁.assert (← mkFreshId) p hp
