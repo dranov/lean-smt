@@ -195,7 +195,7 @@ def smt (cfg : Config) (mv : MVarId) (hs : Array Expr) : MetaM Result :=
     trace[smt] "\nquery:\n{query}"
     asyncChannel.forM fun channel => do if sendQuery then let _ ← channel.send ((id, .queryString query))
   -- 4. Run the solver.
-  let options := defaultSolverOptions ++ if cfg.trust then [] else [("produce-proofs", "true")] ++ cfg.extraSolverOptions
+  let options := defaultSolverOptions ++ (if cfg.trust then [] else [("produce-proofs", "true")]) ++ cfg.extraSolverOptions
   let res ← withTraceNode `smt.perf.solve (fun _ => return "solve") do
     solve (Command.cmdsAsQuery cmds) cfg.timeout (!cfg.trust) options
       cfg.minimizeModel cfg.minimizeTimeout
