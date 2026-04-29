@@ -25,7 +25,7 @@ def mkSortCardinalityConstraint (tm : TermManager) (s : cvc5.Sort) (n : Nat) : E
 /-- Create an SMT constraint that the given relation has at most `n` true tuples.
     `∃c₁...cₙ. ∀x. R(x) → (x = c₁) ∨ ... ∨ (x = cₙ)` (where x, cᵢ are tuples) -/
 def mkRelationCardinalityConstraint (tm : TermManager) (rel : cvc5.Term) (n : Nat) : Env Term := do
-  let domainSorts := rel.getSort.getFunctionDomainSorts!
+  let domainSorts := rel.getSort!.getFunctionDomainSorts!
   let univVars ← domainSorts.mapIdxM fun j s => tm.mkVar s s!"_rel_x_{j}"
   let relApp ← tm.mkTerm .APPLY_UF (#[rel] ++ univVars)
   if n == 0 then
@@ -84,12 +84,12 @@ partial def minimizeCardinality (slv : Solver) (mkConstraint : Nat → Env Term)
 
 /-- Check if a term represents a minimizable relation (function with arity > 0 returning Bool). -/
 def isMinimizableRelation (t : cvc5.Term) : Bool :=
-  let s := t.getSort
-  if s.getKind != .FUNCTION_SORT then false
+  let s := t.getSort!
+  if s.getKind! != .FUNCTION_SORT then false
   else
     let domainSorts := s.getFunctionDomainSorts!
     if domainSorts.size == 0 then false  -- Constants not minimizable
-    else s.getFunctionCodomainSort!.getKind == .BOOLEAN_SORT
+    else s.getFunctionCodomainSort!.getKind! == .BOOLEAN_SORT
 
 /-- Minimize sort cardinalities and relation sizes.
     Takes an optional timeout in milliseconds for the overall minimization budget.
